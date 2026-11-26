@@ -18,7 +18,7 @@ import tempfile
 from datetime import datetime, timezone
 from urllib.parse import quote
 
-VERSION = '0.7.1-beta.1'
+VERSION = '0.7.2-beta.1'
 PIPELINE_VERSION = 1
 
 class CutError(Exception):
@@ -193,6 +193,59 @@ def verify_extraction_source(source, verified=None):
         if verified is not None:
             verified[source['id']] = (source['sha256'], fingerprint)
 
+def overview_key_packets(source, first, last):
+    """Read container timestamps without decoding images or assuming a constant frame rate."""
+    packet_rows = run([tool('ffprobe'), '-v', 'error', '-select_streams', str(source['video_stream']),
+                       '-read_intervals', '%.9f%%%.9f' % (first, last),
+                       '-show_packets', '-show_entries', 'packet=pts_time,dts_time,flags',
+                       '-of', 'csv=p=0', source['path']]).stdout
+    key_times = set()
+    same_decode_order = True
+    for row in csv.reader(packet_rows.splitlines()):
+        if len(row) < 3:
+            continue
+        pts, dts, flags = row[:3]
+        if pts != dts or pts == 'N/A':
+            same_decode_order = False
+        if 'K' in flags and pts != 'N/A':
+            key_times.add(float(pts))
+    require(key_times, 'No timestamped key packets in the overview window')
+    # Discarding packets before a decoder with reordered pictures can misassign their PTS.
+    option = '-discard' if same_decode_order else '-skip_frame'
+    return [option + ':%d' % source['video_stream'], 'nokey'], key_times
+
+def decode_samples(source, start, end, fps, image_filters, stage, log, keyframes=False):
+    origin = source['timeline_origin']
+    first, last = start + origin, end + origin
+    select = "isnan(prev_selected_t)+gte(t-prev_selected_t,%.9f)" % (1 / fps)
+    input_options = []
+    if keyframes:
+        # Anchor each sample to the requested grid, so keyframe spacing cannot accumulate drift.
+        bucket = 'floor((%s-(%.9f))*%.12g)'
+        current, previous = (bucket % (name, first, fps) for name in ('t', 'prev_selected_t'))
+        select = 'eq(key,1)*(isnan(prev_selected_t)+gt(%s,%s))' % (current, previous)
+        input_options, key_times = overview_key_packets(source, first, last)
+    filters = "trim=start=%.9f:end=%.9f,select='%s',%s,showinfo,setpts=PTS-STARTPTS" % (
+        first, last, select, image_filters)
+    result = run([tool('ffmpeg'), '-hide_banner', '-nostdin', '-copyts', '-ss', start,
+                  '-t', end - start, *input_options, '-i', source['path'],
+                  '-map', '0:%d' % source['video_stream'], '-vf', filters,
+                  '-fps_mode', 'vfr', '-q:v', '2', '-an', str(stage / 'f-%06d.jpg')], log=log)
+    packet_times = [float(x) for x in re.findall(
+        r'\bn:\s*\d+\s+pts:\s*-?\d+\s+pts_time:([-+\d.eE]+)', result.stderr)]
+    times = [t - origin for t in packet_times]
+    files = sorted(stage.glob('f-*.jpg'))
+    require(files and len(times) == len(files), 'Frame/PTS mismatch; inspect local extraction log')
+    if keyframes:
+        require(all(round(t, 6) in key_times for t in packet_times),
+                'Decoded overview timestamps differ from source key packet timestamps')
+        expected = math.ceil((end - start) * fps - 1e-9)
+        tolerance = min(1.05, .25 / fps + .05)
+        require(len(times) == expected and all(
+            start <= t < end and -.000001 <= t - (start + i / fps) <= tolerance
+            for i, t in enumerate(times)), 'Keyframes do not cover the requested overview grid')
+    return files, times
+
 def extract(args, _verified=None):
     try:
         from PIL import Image, ImageDraw, ImageFont
@@ -200,15 +253,18 @@ def extract(args, _verified=None):
         raise CutError('Install Pillow: python3 -m pip install -r requirements.txt') from e
     root, p, _ = project(args.project)
     s = get_source(p, args.source)
-    verify_extraction_source(s, _verified)
     start, end = seconds(args.start), seconds(args.end)
     require(0 <= start < end <= s['duration'] + .001, 'Invalid extraction range')
     require(0 < args.fps <= 30 and 160 <= args.width <= 3840, 'Invalid fps or width')
     require(1 <= args.sheet_frames <= (30 if args.purpose == 'overview' else 6),
             'Review sheets allow at most 6 frames; overview sheets at most 30')
     require(args.purpose != 'review' or args.fps >= 2, 'Review evidence requires at least 2 fps')
+    fast = getattr(args, 'fast_overview', False)
+    require(not fast or (args.purpose == 'overview' and args.fps <= .5 and not args.crop),
+            '--fast-overview requires full-court overview sampling at 0.5 fps or less')
     estimate = math.ceil((end - start) * args.fps)
     require(estimate <= args.max_frames, 'Frame budget exceeded (%d); narrow the range or explicitly increase --max-frames' % estimate)
+    verify_extraction_source(s, _verified)
     crop = None
     if args.crop:
         try:
@@ -220,33 +276,42 @@ def extract(args, _verified=None):
             'width': args.width, 'crop': crop, 'purpose': args.purpose,
             'sheet_frames': args.sheet_frames, 'pipeline_version': PIPELINE_VERSION,
             'ffmpeg': run([tool('ffmpeg'), '-version']).stdout.splitlines()[0]}
-    key = stable(spec)
-    directory = root / 'cache/frames' / key
-    manifest_path = directory / 'frames.json'
-    if manifest_path.exists():
+    # A valid conventional overview already satisfies a fast request, including pre-upgrade caches.
+    requested = dict(spec, overview_grid_version=1) if fast else spec
+    for lookup in ([spec, requested] if fast else [spec]):
+        key = stable(lookup)
+        directory = root / 'cache/frames' / key
+        manifest_path = directory / 'frames.json'
+        if not manifest_path.exists():
+            continue
         m = load(manifest_path)
-        if all((root / f['path']).is_file() and sha(root / f['path']) == f['sha256'] for f in m['frames']):
+        if (m['frames'] and m['sheets'] and all((directory / name).is_file() for name in m['sheets'])
+                and all((root / f['path']).is_file() and sha(root / f['path']) == f['sha256'] for f in m['frames'])):
             p['evidence'].update({f['id']: f for f in m['frames']})
             save(root / 'project.json', p)
             return {'cache_hit': True, 'manifest': str(manifest_path), 'frames': len(m['frames']),
+                    'decode_mode': m.get('decode_mode', 'full'),
                     'sheets': [str(directory / x) for x in m['sheets']]}
     directory.mkdir(parents=True, exist_ok=True)
     # Regenerate in staging; an interrupted extraction can never become a valid cache.
     with tempfile.TemporaryDirectory(prefix='extract-', dir=str(directory)) as td:
         stage = Path(td)
-        absolute_start, absolute_end = start + s['timeline_origin'], end + s['timeline_origin']
-        filters = "trim=start=%.9f:end=%.9f,select='isnan(prev_selected_t)+gte(t-prev_selected_t,%.9f)'" % (absolute_start, absolute_end, 1 / args.fps)
+        filters = color_filter(s, args.width)
         if crop:
             x, y, width, height = crop
-            filters += ',crop=%d:%d:%d:%d' % (width, height, x, y)
-        filters += ',' + color_filter(s, args.width) + ',showinfo,setpts=PTS-STARTPTS'
-        result = run([tool('ffmpeg'), '-hide_banner', '-nostdin', '-copyts', '-ss', start,
-             '-t', end - start, '-i', s['path'], '-map', '0:%d' % s['video_stream'],
-             '-vf', filters, '-fps_mode', 'vfr', '-q:v', '2', '-an',
-             str(stage / 'f-%06d.jpg')], log=directory / 'extract.log')
-        pts = [float(x) - s['timeline_origin'] for x in re.findall(r'\bn:\s*\d+\s+pts:\s*-?\d+\s+pts_time:([-+\d.eE]+)', result.stderr)]
-        files = sorted(stage.glob('f-*.jpg'))
-        require(files and len(pts) == len(files), 'Frame/PTS mismatch; inspect local extract.log')
+            filters = 'crop=%d:%d:%d:%d,' % (width, height, x, y) + filters
+        mode = 'full'
+        if fast:
+            key_stage = stage / 'keyframes'
+            key_stage.mkdir()
+            try:
+                files, pts = decode_samples(s, start, end, args.fps, filters, key_stage,
+                                            directory / 'keyframes.log', keyframes=True)
+                mode = 'keyframes'
+            except CutError:
+                mode = 'full_fallback'
+        if mode != 'keyframes':
+            files, pts = decode_samples(s, start, end, args.fps, filters, stage, directory / 'extract.log')
         frames = []
         for i, (file, t) in enumerate(zip(files, pts)):
             dest = directory / file.name
@@ -276,11 +341,11 @@ def extract(args, _verified=None):
         name = 'sheet-%04d.jpg' % (page + 1)
         canvas.save(directory / name, quality=94)
         sheets.append(name)
-    m = {'spec': spec, 'frames': frames, 'sheets': sheets}
+    m = {'spec': requested, 'decode_mode': mode, 'frames': frames, 'sheets': sheets}
     save(manifest_path, m)
     p['evidence'].update({f['id']: f for f in frames})
     save(root / 'project.json', p)
-    return {'cache_hit': False, 'manifest': str(manifest_path), 'frames': len(frames),
+    return {'cache_hit': False, 'manifest': str(manifest_path), 'frames': len(frames), 'decode_mode': mode,
             'sheets': [str(directory / x) for x in sheets]}
 
 def extract_batch(args):
@@ -707,6 +772,7 @@ def cli():
     q.add_argument('--purpose', choices=['overview', 'review'], default='review')
     q.add_argument('--sheet-frames', type=int, default=6);q.add_argument('--max-frames', type=int, default=600)
     q.add_argument('--crop')
+    q.add_argument('--fast-overview', action='store_true', help='Use keyframes for sparse overview if every sampling slot is covered')
     q = commands.add_parser('extract-batch');q.add_argument('project');q.add_argument('--source', required=True)
     q.add_argument('--windows', required=True, help='JSON list of start/end ranges, optionally with fps')
     q.add_argument('--fps', type=float, default=2);q.add_argument('--width', type=int, default=1280)

@@ -1,3 +1,9 @@
+# 0.7.2-beta.1
+
+The first full-court overview can now use verified source keyframes at up to 0.5 fps. It checks each sampling slot and source timestamp, reuses compatible existing caches and falls back to ordinary decoding when coverage is insufficient. Review and export use the original media. The fast path requires only the existing FFmpeg and ffprobe tools.
+
+A local five-minute 1080p HEVC sample produced 75 frames and four sheets at 0.25 fps. Fresh extraction in alternating order took 26.125, 4.041, 4.015 and 26.781 seconds (ordinary, fast, fast, ordinary). The selected keyframes matched full decoding of those same source timestamps in all 75 JPEG hashes. Sampling times differed from the ordinary overview by up to 0.468 seconds. These measurements cover extraction and sheet creation with an existing tool installation and warm OS disk cache. End-to-end time and the effect on rally selection have yet to be measured.
+
 # 0.7.1-beta.1
 
 - Added bounded Jianying draft-root discovery: explicit user root, revalidated saved location, then OS-specific Jianying candidates. The macOS candidate was located successfully in a read-only local check; no private draft content is distributed.

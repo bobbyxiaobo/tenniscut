@@ -173,6 +173,43 @@ class FFmpegTests(unittest.TestCase):
         if p.returncode:
             self.fail(p.stderr)
         return json.loads(p.stdout)
+    def test_fast_overview_uses_source_pts_and_falls_back_for_sparse_keyframes(self):
+        with tempfile.TemporaryDirectory(prefix='tenniscut-grid-') as td:
+            root = Path(td)
+            for gop, bframes, expected in [(12, 0, 'keyframes'), (12, 2, 'keyframes'),
+                                           (24, 0, 'full_fallback'), (144, 2, 'full_fallback')]:
+                case = '%d-%d' % (gop, bframes)
+                video, project = root / (case + '.mp4'), root / case
+                m.run([m.tool('ffmpeg'), '-v', 'error', '-f', 'lavfi', '-i',
+                       'testsrc2=size=320x180:rate=24:duration=7', '-c:v', 'libx264',
+                       '-g', gop, '-bf', bframes, '-sc_threshold', 0, '-threads', 2, video])
+                source = self.cmd('init', project, video)['sources'][0]['id']
+                args = ['extract', project, '--source', source, '--start', '.2', '--end',
+                        '6.1', '--purpose', 'overview', '--fps', '.5']
+                fast = self.cmd(*args, '--fast-overview')
+                self.assertEqual(fast['decode_mode'], expected)
+                self.assertTrue(self.cmd(*args, '--fast-overview')['cache_hit'])
+                frames = m.load(fast['manifest'])['frames']
+                self.assertTrue(all(f['purpose'] == 'overview' for f in frames))
+                standard = self.cmd(*args)
+                legacy = m.load(standard['manifest'])
+                if expected == 'keyframes':
+                    self.assertEqual([f['source_time'] for f in frames], [.5, 2.5, 4.5])
+                else:
+                    self.assertEqual([(f['source_time'], f['sha256']) for f in frames],
+                                     [(f['source_time'], f['sha256']) for f in legacy['frames']])
+                legacy.pop('decode_mode')
+                m.save(standard['manifest'], legacy)
+                restored = self.cmd(*args, '--fast-overview')
+                self.assertTrue(restored['cache_hit'])
+                self.assertEqual(restored['manifest'], standard['manifest'])
+                self.assertEqual(restored['decode_mode'], 'full')
+                denied = subprocess.run([sys.executable, str(HERE / 'scripts/tenniscut.py'),
+                    'extract', str(project), '--source', source, '--start', '0', '--end', '2',
+                    '--purpose', 'review', '--fps', '2', '--fast-overview'], capture_output=True, text=True)
+                self.assertNotEqual(denied.returncode, 0)
+                self.assertIn('--fast-overview requires', denied.stderr)
+
     def test_source_timestamps_incremental_render_and_audio_alignment(self):
         with tempfile.TemporaryDirectory(prefix='tenniscut-test-') as td:
             root = Path(td);video = root / "input 'with spaces'.mp4";project = root / 'project'
