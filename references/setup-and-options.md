@@ -2,7 +2,7 @@
 
 ## Source selection precedes the two settings
 
-On a bare skill invocation, first let the user select the source folder, then list its videos and collect the specific file selection, even for one video. Use a folder explicitly selected for this task in the client, or the client directory selector / optional native helper in [source selection](source-selection.md). Old chat paths do not select a source for a fresh invocation. Only an explicit continuation/correction reuses a previous project. A current explicit file selection needs no duplicate question. Users need not type a path. Selection is a source-intake action, not an additional saved setting; cancellation does not authorize any scanning.
+Start with the user's choice of local video file(s) or a folder. Exact files proceed directly to editing settings. For a folder, show the candidate names, sizes, dates added and durations unless the user already specified which files to use. Use the [source picker](source-selection.md) when needed. A previous folder is a shortcut; an explicit continuation reuses its project.
 
 At first source intake, explicitly remind the user that a local file/directory path is enough in a local-file-capable host; uploading the original video as a chat attachment is optional. Use the short Chinese reminder in `SKILL.md`. If a readable path is already supplied, continue without asking for upload or redundant path confirmation. Enumerate directory inputs into the exact selected source files before invoking `init`; respect filename restrictions and avoid known generated outputs.
 

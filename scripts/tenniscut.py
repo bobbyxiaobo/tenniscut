@@ -18,7 +18,7 @@ import tempfile
 from datetime import datetime, timezone
 from urllib.parse import quote
 
-VERSION = '0.7.2-beta.1'
+VERSION = '0.7.3-beta.1'
 PIPELINE_VERSION = 1
 
 class CutError(Exception):

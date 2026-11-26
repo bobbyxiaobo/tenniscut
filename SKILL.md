@@ -11,26 +11,23 @@ Use the user's counting convention. Default: each actual racket contact by eithe
 
 ## Fast source intake — act before preparation
 
-A bare `tenniscut` starts a new task. First choose a source folder, then the exact video file(s), then unanswered editing settings. Historical paths are suggestions only; do not silently reuse old footage. An explicit continuation/correction resumes its project without reopening intake. Current exact paths/filenames or “all videos in this folder” already answer file selection.
-
-Keep this stage lightweight. Use the following next action immediately after each answer:
+A bare `tenniscut` starts source selection. Exact file paths, selected files and an explicit “all videos in this folder” already identify the footage. Use previous folders only as shortcuts. Resume an explicit continuation or correction directly.
 
 | Current input | Next action |
 | --- | --- |
-| No source | Show one native question offering a previously used folder as an explicit choice plus another path/client picker. Read picker-specific instructions only if needed. |
-| Directory supplied/selected | Run only `python3 scripts/select_source.py inspect DIR`, then immediately show the returned video filenames as a choice. No analysis or other preparation between listing and the question. |
-| Exact file(s) selected | Run `python3 scripts/session.py inspect PROJECT --intake-only` with current explicit overrides, then immediately show all unanswered editing settings together. |
-| Settings submitted or both supplied explicitly | Persist confirmed choices, then perform dependency checks, source probing/hashing and initialization. |
+| No source on macOS | On a local interactive Mac, open the combined system panel immediately with `python3 scripts/select_source.py choose --kind source`. A known folder may be its starting location. Wait on the same invocation until selection or cancellation; a yielded process is still waiting. If a dialog is unavailable, leave the path and folder choices in an ordinary chat message. |
+| No source on other hosts | Offer **直接选视频** and **选择文件夹** together. Use a local host picker or the helper's `choose --kind files` / `--kind folder`. |
+| Exact file(s) picked or provided | Proceed straight to `session.py inspect PROJECT --intake-only` with current overrides and show unanswered editing settings together. For a file picker, consume its returned paths directly. |
+| Directory provided or picked | Use the picker’s returned list, or run `select_source.py inspect DIR` once. Present every candidate’s `choice_label` (filename, size, date added, duration). Leave the numbered list with all four fields in ordinary chat text as well, so a reply by number still works after a card closes. Skip repeat selection when files or scope were explicit. |
+| Settings confirmed | Save them, then check dependencies, initialize and analyze the selected sources. |
 
-Before the video-choice card, use metadata only: filenames, sizes and modification dates; no ffprobe duration, full-file hash, old task inspection, dependency checks, installation, broad searches, or loading review/draft references. Before the settings card, `--intake-only` reads preferences without discovering media tools/packages. Do not delay either card for a progress-only reply or unrelated calls. Keep the first question in the same turn as its required lightweight read. A failed listing needs access/error handling, not a wider scan.
+If the user asks to open a picker, open it directly. On cancellation stop intake. Tell the user briefly: “可以直接选本机视频或文件夹，也可以粘贴路径。原视频不用上传，分析用的截图可能由模型服务处理。”
 
-Aim to complete source selection within 60 seconds of assistant/host time; this is a UX target, not a guaranteed SLA. User response time and permission waits are separate. Record invocation/folder/files/settings/analysis/export milestones when available, preferably in an already needed call; do not add clock calls before a question. Missing timestamps remain unknown. A millisecond listing benchmark does not measure model/host round-trip latency. If intake is slow, measure those intervals rather than repeating setup checks.
-
-At first intake say briefly: “不用上传原视频，选择本机文件夹或告诉我路径即可；抽帧和剪辑在本机执行，供助手分析的截图可能交由模型服务处理。” Verify actual local access; a remote runtime may need a mount or optional upload. A folder picker does not grant filesystem permissions, and cancellation authorizes no scan. See [source selection](references/source-selection.md) only for picker/fallback details.
+Keep source selection within roughly a minute of assistant/host time when possible. Directory lookup has a short shared duration-probe budget and labels unknown metadata. Defer analysis, hashing and installation until settings are confirmed. Track picker, list and settings milestones when available without adding a turn. See [source selection](references/source-selection.md) for GUI fallbacks, timing and date semantics.
 
 ## Editing settings and natural language
 
-Default choices: minimum combined contacts **8** (6 / 8 / 10 / custom positive integer), also generate Jianying draft **no**. Every new task asks these two settings; no asking-frequency question is shown. Ask all unanswered settings in one native question-tool call; use a concise text fallback if unavailable. Respect the tool's option limits and built-in custom answer. A preselected value or silence is not an answer. No CapCut setting is offered.
+Default choices: minimum combined contacts **8** (6 / 8 / 10 / custom positive integer), also generate Jianying draft **no**. Every new task asks these two settings; no asking-frequency question is shown. Present unanswered settings together. Use a native card when available and leave the same choices in an ordinary chat message, with a short reply example such as “10 拍，仅视频”. Respect the tool's option limits and built-in custom answer. A preselected value or silence is not an answer. No CapCut setting is offered.
 
 Current explicit instructions override confirmed project choices, remembered preferences, then defaults. “8拍以上” means >=8; “超过8拍” means >=9. Preserve custom counts, resolution, draft requests and corrections stated in natural language; do not ask users to repeat them with a button. Pass startup overrides to `inspect --intake-only --threshold N --jianying yes/no`. Clarify genuinely ambiguous counting conventions, such as counting only one player's hits.
 

@@ -1,61 +1,26 @@
-# Source folder selection
+# Selecting local tennis footage
 
-## Fast selection boundary
+Use a local desktop picker or accept pasted paths. For a fresh run on a local interactive Mac, launch `choose --kind source` immediately and wait on the same process for its result. The modal system panel stays available while the process runs. Use this one panel where the user can select one or more video files (Command-click for multiple) or a single folder. A recent directory may be passed as the initial location. On hosts with separate dialogs offer **直接选视频** and **选择文件夹** side by side. An explicit request to open a picker already selects the action. Prefer a host picker which returns local paths. A workspace-only selector can serve the folder branch.
 
-`inspect DIR` performs a single nonrecursive metadata listing. Show its result as the video-choice question immediately; do not probe all files for durations or hash their contents. The result supplies `size_bytes`, `modified_epoch` and `elapsed_seconds`. A supported exact file path is also accepted and returns `files_selected: true`, `next_step: collect_editing_settings`; it does not reopen directory/file selection. A directory result returns `files_selected: false`, so selection is still required. Both paths report `media_content_read: false`.
-
-Do not block a directory/file question on dependency inspection, `init`, package installation, old project inspection or broad filesystem searches. Once files are selected, use `session.py inspect PROJECT --intake-only` and immediately present the unanswered editing settings together. Do not use dependency-discovering plain `inspect` before that card. Source hashing and media inspection belong after these answers. The helper timing excludes model/host latency, user wait and GUI selection time.
-
-## User flow
-
-Select a folder → choose the intended source files from its video list → answer the unanswered editing settings → review and export. Folder selection is not a fourth remembered preference.
-
-A bare skill invocation starts a new source-selection flow. Do not infer a continuation from an old conversation path or from the presence of an old project. Offer the client/native directory chooser before asking editing settings. An explicitly selected source workspace or a folder supplied in the current task answers the directory step; historical folders may be suggested, not silently reused. Clear requests to continue/correct an existing task reuse that task's sources without another picker.
-
-List the chosen folder's video filenames, remove known outputs, and ask which file(s) to process before proceeding, including a folder containing just one video. Use the host's native single/multiple choice surface when it supports the required selection. A single-select-only tool cannot stand in for arbitrary multiple selection: accept filenames in natural language or an explicit “all listed videos” choice. Include enough of each filename to distinguish it; show duration if already known. Direct file paths, exact filename restrictions and an explicit all-files request already select files and need no duplicate question. Source selection never turns saved editing preferences into authority to pick old footage.
-
-Tell the user they can choose a folder instead of uploading original videos or typing a full path. Prefer the client’s supported folder/workspace selection:
-
-- Codex: select a local project folder; additional folders may need project access configuration. See [local projects](https://learn.chatgpt.com/docs/projects).
-- WorkBuddy: select the workspace through its file chooser when creating the task. See [task bar and workspace selection](https://www.workbuddy.cn/docs/workbuddy/From-Beginner-to-Expert-Guide/Function-Description/Task-Bar).
-
-Do not invent a chat attachment button that grants directory access, or claim a text-choice tool opens an OS dialog. UI locations may vary by client version. A cloud/remote runtime needs an accessible mount/workspace; it cannot read the user's computer merely from a local path.
-
-## Optional local native picker
-
-The bundled standard-library helper can open a folder chooser when execution is on the user's interactive desktop and the host permits that operation. It uses macOS AppleScript, Windows FolderBrowserDialog, Linux zenity, or available Tk. No extra editor skill is required. It does not silently install a GUI toolkit.
-
-Run from the skill directory:
+From the skill directory:
 
 ```bash
-python3 scripts/select_source.py capabilities
-python3 scripts/select_source.py choose
+python3 scripts/select_source.py choose --kind source   # macOS combined panel
+python3 scripts/select_source.py choose --kind files    # direct video selection
+python3 scripts/select_source.py choose --kind folder   # browse a folder
+python3 scripts/select_source.py inspect "/path/to/one.mov" "/path/to/two.mp4"
+python3 scripts/select_source.py inspect "/path/to/folder" --exclude "/path/to/folder/old-cut.mp4"
 ```
 
-`capabilities` only detects candidate backends and opens no dialog. It does not prove permission to show one. Invoke `choose` when the user actually needs to select a source, not while merely explaining the feature. Tell the user a folder chooser is opening. The command waits for selection/cancellation; use the execution tool's yield/poll mechanism and keep the user informed instead of treating elapsed time as a selection.
+The optional `--initial-dir` sets the starting location. Windows supports multiple files in the file dialog, Tk supports multiselect, and the Linux zenity file dialog returns a single video. Typed paths can specify several files. `capabilities` reports candidate local backends without opening a window. In a headless or permission-limited host, accept paths in an accessible workspace. Picking a path and granting host filesystem access are separate actions. On cancellation, end source selection without scanning a fallback directory.
 
-Optionally start within a user-specified folder:
+Follow the helper's result:
 
-```bash
-python3 scripts/select_source.py choose --initial-dir /path/to/known-folder
-```
+- `files_selected: true`: use exactly the selected paths and go straight to unanswered editing settings. A direct file selection does not enumerate siblings or look up their durations.
+- `next_step: select_source_files`: show each video's `choice_label` immediately. It contains the filename, size, local date added and duration (MM:SS or H:MM:SS). Preserve all four fields. Publish the numbered list with its full metadata in ordinary chat text even when offering a clickable card; the user can answer from the message later. Accept numbers, names, multiple files or “全部”. Apply current explicit file restrictions and skip the question if they already identify the source(s).
+- `next_step: choose_another_folder`: the directory has no supported candidates. Offer file and folder selection again.
+- `status: cancelled` or an error: no source was selected. Report access errors directly. A user may choose a different source or supply a path.
 
-The helper prints JSON. `status: selected` contains `directory` and a nonrecursive `videos` list of names and absolute paths; check actual file readability before initialization. `status: cancelled` means stop source intake without scanning a default folder. `status: error` means use the client selector or an accessible pasted path; do not bypass sandbox policy, retry popups repeatedly, or require a large-video upload just because a dialog failed.
+Directory inspection lists immediate, nonhidden video files, sorted by filename. Exclude known exports using repeatable `--exclude`. On macOS the helper reads the filesystem's date added to that directory. When unavailable, the label can show the filesystem creation time explicitly as a fallback. Duration uses a bounded local ffprobe lookup (macOS Spotlight when ffprobe is absent); a missing or slow lookup is marked unknown. Opening the candidate list needs no software install, media hashing, frame extraction or project setup. Listing time excludes host and user interaction.
 
-A selected folder does not automatically authorize the host to read it. Use the client's real directory/workspace authorization if needed. No host permissions are changed, no preferences are saved, and no media is uploaded by this helper. Extracted images inspected by a hosted model may still leave the machine for analysis.
-
-## Enumerate and use the selected files
-
-For an already supplied directory, list files without opening a dialog:
-
-```bash
-python3 scripts/select_source.py inspect /path/to/videos --exclude /path/to/videos/known-export.mp4
-```
-
-`--exclude` can be repeated for known generated files. The helper lists immediate, nonhidden files with supported video suffixes. It does not automatically identify every exported video. Apply the user's filename restrictions and remove known exports, caches, and drafts before proceeding. Do not recursively scan unrelated directories. Unless the current request already identifies the files, show the short filename list and collect the file choice, even for a one-video folder. Pass actual selected video file paths to `tenniscut.py init`, not the directory itself.
-
-An empty list is a reason to choose another folder or clarify scope, not to scan elsewhere without instruction. Keep source files intact.
-
-## Verification limits
-
-Automated tests cover listing, exclusions, Unicode/quoted paths, cancellation, missing GUI/errors, and argument handling through mocked dialog calls. Native dialogs have not yet completed real interactive acceptance in Codex/WorkBuddy across macOS, Windows and Linux. Report those limits separately from the tested path-handling logic.
+The local helper does not upload media. A hosted model may receive screenshots when it later reviews play.

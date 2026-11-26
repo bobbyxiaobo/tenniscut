@@ -1,4 +1,4 @@
 interface:
   display_name: "tenniscut"
   short_description: "筛选固定机位网球视频的连续回合，逐拍留证并在本机导出"
-  default_prompt: "使用 $tenniscut：先让我选择本机视频文件夹和具体视频，每次新任务只询问拍数下限和是否生成剪映草稿；已有明确要求不重复询问。"
+  default_prompt: "使用 $tenniscut：让我直接选本机视频或选文件夹浏览，每次新任务只询问拍数下限和是否生成剪映草稿；已有明确要求不重复询问。"

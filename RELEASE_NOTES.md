@@ -1,3 +1,10 @@
+# 0.7.3-beta.1
+
+- 在本机 Mac 上输入 `tenniscut` 会直接打开系统选片窗口。可选一个或多个视频，也可选文件夹，窗口会等待选择或取消。
+- 直接选中视频后进入剪辑设置。选文件夹时，候选列表显示文件名、大小、添加到当前文件夹的时间和时长。读取时长有时间限制，缺失的字段会标明。
+- 视频编号和剪辑设置以普通文字留在聊天中，选择卡收起后仍可回复。Windows、Linux 和其他支持的宿主可分别打开文件或目录选择器，也可粘贴本机路径。
+- 已在 macOS Codex 的原生选片窗口选中一个文件夹，并取得其中视频的添加时间与时长。WorkBuddy 和其他平台的窗口交互仍待实机验证。
+
 # 0.7.2-beta.1
 
 The first full-court overview can now use verified source keyframes at up to 0.5 fps. It checks each sampling slot and source timestamp, reuses compatible existing caches and falls back to ordinary decoding when coverage is insufficient. Review and export use the original media. The fast path requires only the existing FFmpeg and ffprobe tools.
