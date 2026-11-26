@@ -61,6 +61,6 @@ No dependency installation is performed just by activating the skill or running 
 
 ## Optional Jianying output
 
-Read [Jianying output](jianying-output.md) only when the user chose to generate a draft. Do not check or install its packages for MP4-only jobs.
+Read [Jianying output](jianying-output.md) only when the user chose to generate a draft. After answers and before long analysis, run `jianying.py --discover --check-write`; resolve directory/access ambiguity along with optional dependencies. Do not add discovery before source/settings selection. Do not check or install its packages for MP4-only jobs.
 
 Compatibility after renaming: the old `TENNIS_RALLY_CUT_PREFERENCES` environment override is accepted when the new one is absent. Without either override, an existing legacy `tennis-rally-cut/preferences.json` is read if the new file is absent; the next confirmed save writes under `tenniscut` and preserves the old file.

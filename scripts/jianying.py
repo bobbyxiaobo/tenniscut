@@ -13,6 +13,7 @@ import time
 import uuid
 import tenniscut as core
 from session import resolve_threshold
+import jianying_paths
 
 def generate(args):
     root, project, rallies = core.project(args.project)
@@ -22,7 +23,15 @@ def generate(args):
     core.require(plan['rallies'], 'No eligible rallies')
     width, height = core.resolve_resolution(args.resolution, project, plan['rallies'])
     core.require(bool(args.name) and args.name not in ('.', '..') and not any(x in args.name for x in '/\\\x00'), 'Draft name must be a single folder name')
-    destination = Path(args.draft_root).expanduser().resolve()
+    if args.draft_root:
+        destination = Path(args.draft_root).expanduser().resolve()
+        directory_check = jianying_paths.inspect_root(destination)
+    else:
+        discovery = jianying_paths.discover(check_write=True)
+        core.require(discovery['selected_root'],
+                     'Jianying draft root unresolved (' + discovery['status'] + '). Run --discover --check-write for attempted paths and errors; inspect app settings or ask for its configured draft location before explicitly choosing an export-only folder.')
+        destination = Path(discovery['selected_root'])
+        directory_check = next(r for r in discovery['attempts'] if r['path'] == str(destination))
     final = destination / args.name
     core.require(not final.exists(), 'Draft already exists; choose a new name')
     try:
@@ -70,6 +79,8 @@ def generate(args):
         core.save(meta_path, meta)
         plan.update(output_kind='jianying_draft', resolution=[width, height],
                     draft_name=args.name, app_open_verified=False,
+                    draft_root_verified=directory_check['directory_verified'],
+                    delivery_status='placed_in_verified_root' if directory_check['directory_verified'] else 'files_generated',
                     notes=['Uses original source media and embedded audio.',
                            'Generated draft is not automatically installed or guaranteed accepted by every Jianying version.',
                            'HDR appearance and final export settings must be verified in Jianying.'])
@@ -78,17 +89,30 @@ def generate(args):
         core.require(not final.exists(), 'Draft destination appeared during generation; refusing to replace')
         os.rename(stage, final)
     return {'draft_folder': str(final), 'rallies': len(plan['rallies']),
-            'duration': plan['duration'], 'structure_checks': 'passed', 'app_open_verified': False}
+            'duration': plan['duration'], 'structure_checks': 'passed', 'app_open_verified': False,
+            'draft_root_verified': directory_check['directory_verified'],
+            'delivery_status': plan['delivery_status']}
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('project');parser.add_argument('--threshold', type=int)
+    parser.add_argument('project', nargs='?');parser.add_argument('--threshold', type=int)
     parser.add_argument('--fps', type=int, default=30);parser.add_argument('--resolution', default='source', help='source (default) or an explicit WIDTHxHEIGHT')
-    parser.add_argument('--draft-root', required=True);parser.add_argument('--name', required=True)
+    parser.add_argument('--draft-root');parser.add_argument('--name')
+    parser.add_argument('--discover', action='store_true', help='Inspect saved/standard roots without generating a draft')
+    parser.add_argument('--check-write', action='store_true', help='Test a new temporary file in inspected roots')
+    parser.add_argument('--remember-root', action='store_true', help='Validate and save the explicit --draft-root for later tasks')
     parser.add_argument('--allow-pending', action='store_true')
     args = parser.parse_args()
     try:
-        print(json.dumps(generate(args), ensure_ascii=False, indent=2))
+        if args.remember_root:
+            core.require(bool(args.draft_root), '--remember-root requires --draft-root')
+            result = jianying_paths.remember(args.draft_root)
+        elif args.discover:
+            result = jianying_paths.discover(args.draft_root, args.check_write)
+        else:
+            core.require(bool(args.project) and bool(args.name), 'Generation requires project and --name')
+            result = generate(args)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     except (core.CutError, OSError, ValueError, KeyError, TypeError) as e:
         print(json.dumps({'error': str(e)}, ensure_ascii=False), file=sys.stderr)

@@ -1,3 +1,15 @@
+# 0.7.1-beta.1
+
+- Added bounded Jianying draft-root discovery: explicit user root, revalidated saved location, then OS-specific Jianying candidates. The macOS candidate was located successfully in a read-only local check; no private draft content is distributed.
+- Missing, denied, ambiguous and unverified directory outcomes are reported separately. A temporary write probe is opt-in; shared indexes and existing drafts are never edited by discovery.
+- Added explicit verified-root memory, separate from intake preferences. Automatic generation uses one verified writable root or stops with actionable discovery instructions; export-only fallback requires an explicit destination.
+- Draft receipts distinguish generated files from placement in a verified root. Neither claims app registration or successful playback. The workflow now checks the configured app location before asking the user, and calls for opening/playback acceptance with available host tools.
+- Added regression tests for discovery, write denial, stale saved paths, ambiguity, explicit-path failure, preservation of existing files and automatic-generation receipts.
+
+This update does not add automatic GUI control or prove compatibility with every Jianying version. WorkBuddy end-to-end operation and target-app opening/playback remain unverified. It does not change rally-recognition logic or performance claims. MIT License, copyright 2026 YE BO.
+
+Previous release notes follow.
+
 # 0.7.0-beta.1
 
 This Beta supports fixed-camera tennis footage through a local agent workflow. It exports MP4 highlights, a per-contact evidence ledger, export manifests and CSV time maps, with optional experimental Jianying draft output. Original resolution, normal speed and source sound remain the defaults.

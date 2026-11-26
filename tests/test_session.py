@@ -276,4 +276,27 @@ class JianyingContractTests(unittest.TestCase):
             content=core.load(Path(result['draft_folder'])/'draft_content.json')
             self.assertEqual(content['canvas_config'], {'width':2560,'height':1440})
 
+    def test_auto_root_generates_separate_clips_without_claiming_app_acceptance(self):
+        with tempfile.TemporaryDirectory() as td:
+            p,plan,args=self.setup_case(td)
+            destination=Path(td).resolve()/'app-drafts';destination.mkdir()
+            args.draft_root=None
+            discovered={'selected_root':str(destination),'attempts':[{'path':str(destination),'directory_verified':True}], 'status':'selected'}
+            with patch.object(core,'project',return_value=(Path(args.project),p,[])), patch.object(core,'make_plan',return_value=plan), patch.object(jianying.importlib,'import_module',return_value=FakeLibrary), patch.object(jianying.jianying_paths,'discover',return_value=discovered):
+                result=jianying.generate(args)
+            self.assertEqual(result['delivery_status'],'placed_in_verified_root')
+            self.assertFalse(result['app_open_verified'])
+            manifest=core.load(Path(result['draft_folder'])/'tenniscut-manifest.json')
+            self.assertTrue(manifest['draft_root_verified'])
+            self.assertFalse(manifest['app_open_verified'])
+
+    def test_unresolved_auto_root_does_not_create_fallback_or_load_dependency(self):
+        with tempfile.TemporaryDirectory() as td:
+            p,plan,args=self.setup_case(td);args.draft_root=None
+            with patch.object(core,'project',return_value=(Path(args.project),p,[])), patch.object(core,'make_plan',return_value=plan), patch.object(jianying.jianying_paths,'discover',return_value={'selected_root':None,'status':'ambiguous'}), patch.object(jianying.importlib,'import_module') as dependency:
+                with self.assertRaisesRegex(core.CutError,'ambiguous'):
+                    jianying.generate(args)
+                dependency.assert_not_called()
+            self.assertFalse((Path(td)/'drafts').exists())
+
 if __name__=='__main__':unittest.main(verbosity=2)

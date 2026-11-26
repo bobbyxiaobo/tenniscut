@@ -1,6 +1,6 @@
 # tenniscut · 网球多拍剪辑
 
-**Beta 0.7.0-beta.1：让 AI 助手筛选固定机位网球视频的连续多拍回合，逐拍留证，用 FFmpeg 本地导出。**
+**Beta 0.7.1-beta.1：让 AI 助手筛选固定机位网球视频的连续多拍回合，逐拍留证，用 FFmpeg 本地导出。**
 
 用户可以指定“双方合计至少 10 次击球”，合并多个视频，也可以指出“成片 00:25 这轮有问题”，仅修正相关回合。默认按原片分辨率导出，保留原声，提供回合时间清单和可选剪映草稿；明确要求时可另设2K等尺寸。默认直接交付成片；HTML 复核页面暂缓。
 
@@ -136,8 +136,13 @@ MP4 和剪映画布默认跟随所选原片的显示分辨率（包含旋转后�
 
 ```bash
 python3 -m pip install -r requirements-jianying.txt
-python3 scripts/jianying.py /path/to/private-project --draft-root /path/to/draft-output --name tennis-8plus
+python3 scripts/jianying.py --discover --check-write
+python3 scripts/jianying.py /path/to/private-project --name tennis-8plus-unique
 ```
+
+选择草稿后先自动检查曾验证过的目录和剪映常见位置；找不到时再检查应用配置，不会直接宣称“新版剪映没有草稿目录”。权限不足和多目录冲突会分别说明。可用 `--remember-root --draft-root PATH` 保存已验证位置，下次重新校验。自动查找不会修改剪映共享索引，也不会覆盖已有草稿。
+
+交付区分“文件已生成”“已放入已验证目录”和“已在剪映中打开播放”。前两项不能代替最后一项；应用验收需要宿主提供应用操作能力，否则明确报告待验证。
 
 草稿引用原片，每个回合是独立片段，原片路径需要保持可访问。只创建新草稿，不读取或覆盖已有草稿。`render` 的结果会提示是否还需要生成剪映草稿，不能把 MP4 导出当成两个输出都完成。
 
